@@ -3,40 +3,120 @@ import joblib
 import re
 import string
 
-# Load the saved TF-IDF vectorizer and model
-tfidf_vectorizer = joblib.load('tfidf_vectorizer.pkl')
-model = joblib.load('logistic_regression_model.pkl')
+# -----------------------------
+# Page Configuration
+# -----------------------------
+st.set_page_config(
+    page_title="🎬 IMDB Movie Review Sentiment Analyzer",
+    page_icon="🎬",
+    layout="centered"
+)
 
-# Text cleaning function (must be the same as used during training)
+# -----------------------------
+# Load Model and Vectorizer
+# -----------------------------
+@st.cache_resource
+def load_models():
+    vectorizer = joblib.load("tfidf_vectorizer.pkl")
+    model = joblib.load("logistic_regression_model.pkl")
+    return vectorizer, model
+
+try:
+    tfidf_vectorizer, model = load_models()
+except Exception as e:
+    st.error(f"❌ Error loading model files:\n\n{e}")
+    st.stop()
+
+# -----------------------------
+# Text Cleaning Function
+# -----------------------------
 def clean_text(text):
-    text = text.lower() # Convert to lowercase
-    text = re.sub(r'<.*?>', '', text) # Remove HTML tags
-    text = ''.join([char for char in text if char not in string.punctuation]) # Remove punctuation
+    text = text.lower()
+    text = re.sub(r"<.*?>", "", text)          # Remove HTML tags
+    text = re.sub(r"\d+", "", text)            # Remove numbers
+    text = "".join(char for char in text if char not in string.punctuation)
+    text = re.sub(r"\s+", " ", text).strip()   # Remove extra spaces
     return text
 
-st.title('IMDB Movie Review Sentiment Analyzer')
-st.write('Enter a movie review below to predict its sentiment (positive/negative).')
+# -----------------------------
+# App Title
+# -----------------------------
+st.title("🎬 IMDB Movie Review Sentiment Analyzer")
+st.write(
+    "Enter a movie review below to predict whether it expresses a **Positive** or **Negative** sentiment."
+)
 
-# Text input
-user_input = st.text_area('Enter your review here:', '')
+# -----------------------------
+# User Input
+# -----------------------------
+user_input = st.text_area(
+    "✍️ Enter your movie review:",
+    height=180,
+    placeholder="Example: This movie was absolutely amazing! The acting was brilliant..."
+)
 
-if st.button('Analyze Sentiment'):
-    if user_input:
-        # Clean the input text
-        cleaned_input = clean_text(user_input)
+# -----------------------------
+# Analyze Button
+# -----------------------------
+if st.button("🔍 Analyze Sentiment", use_container_width=True):
 
-        # Transform the cleaned text using the loaded TF-IDF vectorizer
-        # tfidf_vectorizer expects an iterable, so pass cleaned_input in a list
-        input_tfidf = tfidf_vectorizer.transform([cleaned_input])
-
-        # Make prediction
-        prediction = model.predict(input_tfidf)
-        prediction_proba = model.predict_proba(input_tfidf)
-
-        st.subheader('Prediction:')
-        if prediction[0] == 'positive':
-            st.success(f'The review is: Positive (Confidence: {prediction_proba[0][1]*100:.2f}%)')
-        else:
-            st.error(f'The review is: Negative (Confidence: {prediction_proba[0][0]*100:.2f}%)')
+    if user_input.strip() == "":
+        st.warning("⚠️ Please enter a movie review.")
     else:
-        st.warning('Please enter a review to analyze.')
+
+        cleaned_text = clean_text(user_input)
+
+        # Transform text
+        input_vector = tfidf_vectorizer.transform([cleaned_text])
+
+        # Prediction
+        prediction = model.predict(input_vector)[0]
+        probabilities = model.predict_proba(input_vector)[0]
+
+        # Confidence
+        confidence = max(probabilities) * 100
+
+        st.divider()
+        st.subheader("Prediction Result")
+
+        if prediction.lower() == "positive":
+            st.success("😊 **Positive Review**")
+            st.progress(int(confidence))
+            st.write(f"**Confidence:** {confidence:.2f}%")
+        else:
+            st.error("😞 **Negative Review**")
+            st.progress(int(confidence))
+            st.write(f"**Confidence:** {confidence:.2f}%")
+
+        # Probability Details
+        st.subheader("Prediction Probabilities")
+
+        try:
+            class_labels = model.classes_
+
+            for label, prob in zip(class_labels, probabilities):
+                st.write(f"**{label.capitalize()}** : {prob*100:.2f}%")
+
+        except Exception:
+            st.write(f"Positive : {probabilities[1]*100:.2f}%")
+            st.write(f"Negative : {probabilities[0]*100:.2f}%")
+
+        # Show cleaned text
+        with st.expander("📝 View Processed Text"):
+            st.write(cleaned_text)
+
+# -----------------------------
+# Sidebar
+# -----------------------------
+st.sidebar.header("About")
+st.sidebar.info(
+    """
+This application predicts the sentiment of IMDB movie reviews using:
+
+- TF-IDF Vectorization
+- Logistic Regression
+- Streamlit
+
+Simply type or paste a movie review and click **Analyze Sentiment**.
+"""
+)
